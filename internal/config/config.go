@@ -2,8 +2,8 @@ package config
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
+	"path/filepath"
 )
 
 const (
@@ -11,8 +11,35 @@ const (
 )
 
 type Config struct {
-	DBUrl           string `json:"db_url"`
-	CurrentUsername string `json:"current_user_name"`
+	DBURL           string `json:"db_url"`
+	CurrentUserName string `json:"current_user_name"`
+}
+
+func (cfg *Config) SetUser(userName string) error {
+	cfg.CurrentUserName = userName
+	return write(*cfg)
+}
+
+func Read() (Config, error) {
+	fullPath, err := getConfigFilePath()
+	if err != nil {
+		return Config{}, err
+	}
+
+	file, err := os.Open(fullPath)
+	if err != nil {
+		return Config{}, err
+	}
+	defer file.Close()
+
+	decoder := json.NewDecoder(file)
+	cfg := Config{}
+	err = decoder.Decode(&cfg)
+	if err != nil {
+		return Config{}, err
+	}
+
+	return cfg, nil
 }
 
 func getConfigFilePath() (string, error) {
@@ -20,59 +47,27 @@ func getConfigFilePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return home + "/" + configFileName, nil
+	fullPath := filepath.Join(home, configFileName)
+	return fullPath, nil
 }
 
 func write(cfg Config) error {
-	jsonData, err := json.MarshalIndent(cfg, "", "  ")
+	fullPath, err := getConfigFilePath()
 	if err != nil {
 		return err
 	}
 
-	fp, err := getConfigFilePath()
+	file, err := os.Create(fullPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	err = encoder.Encode(cfg)
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile(fp, jsonData, 0644)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func Read() Config {
-	path, err := getConfigFilePath()
-	if err != nil {
-		s := fmt.Errorf("Could not locate home dir: %w", err)
-		fmt.Print(s)
-		return Config{}
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		s := fmt.Errorf("Error reading data: %w", err)
-		fmt.Print(s)
-		return Config{}
-	}
-
-	var config Config
-	err = json.Unmarshal(data, &config)
-	if err != nil {
-		s := fmt.Errorf("Could not parse JSON: %w", err)
-		fmt.Print(s)
-		return Config{}
-	}
-
-	return config
-}
-
-func (cfg *Config) SetUser(user string) error {
-	cfg.CurrentUsername = user
-	err := write(*cfg)
-	if err != nil {
-		return fmt.Errorf("Could not set user: %w", err)
-	}
 	return nil
 }
