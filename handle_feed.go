@@ -42,20 +42,14 @@ func handlerAgg(s *state, cmd command) error {
 
 }
 
-func handlerAddfeed(s *state, cmd command) error {
+func handlerAddfeed(s *state, cmd command, user database.User) error {
 	if len(cmd.Args) != 2 {
 		return fmt.Errorf("usage: %s <feedname> <url>", cmd.Name)
 	}
 
 	feedName := cmd.Args[0]
 	feedURL := cmd.Args[1]
-	userName := s.cfg.CurrentUserName
 	ctx := context.Background()
-
-	user, err := s.db.GetUser(ctx, userName)
-	if (err != nil) || (user.Name != userName) {
-		return fmt.Errorf("error retrieving user")
-	}
 
 	now := time.Now()
 	feed, err := s.db.CreateFeed(ctx, database.CreateFeedParams{
@@ -64,13 +58,22 @@ func handlerAddfeed(s *state, cmd command) error {
 		UpdatedAt: now,
 		Name:      feedName,
 		Url:       feedURL,
+	})
+	if err != nil {
+		return fmt.Errorf("error adding feed")
+	}
+	_, err = s.db.CreateFeedFollow(ctx, database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: now,
+		UpdatedAt: now,
 		UserID:    user.ID,
+		FeedID:    feed.ID,
 	})
 	if err != nil {
 		return fmt.Errorf("error adding feed")
 	}
 
-	fmt.Printf("%+v", feed)
+	fmt.Printf("%+v\n", feed)
 	return nil
 }
 
@@ -114,4 +117,54 @@ func handlerFeeds(s *state, cmd command) error {
 	w.Flush()
 	return nil
 
+}
+
+func handlerFollow(s *state, cmd command, user database.User) error {
+	if len(cmd.Args) != 1 {
+		return fmt.Errorf("usage: %s <url>", cmd.Name)
+	}
+
+	feedURL := cmd.Args[0]
+	ctx := context.Background()
+
+	feed, err := s.db.GetFeedByURL(ctx, feedURL)
+	if err != nil {
+		return fmt.Errorf("feed to follow does not exist")
+	}
+
+	now := time.Now()
+	feedFollow, err := s.db.CreateFeedFollow(ctx, database.CreateFeedFollowParams{
+		ID:        uuid.New(),
+		CreatedAt: now,
+		UpdatedAt: now,
+		UserID:    user.ID,
+		FeedID:    feed.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("couldn't follow feed")
+	}
+
+	fmt.Printf("User (%v) is following feed (%v)\n", feedFollow.User, feedFollow.Feed)
+	return nil
+}
+
+func handlerFollowing(s *state, cmd command, user database.User) error {
+	if len(cmd.Args) != 0 {
+		return fmt.Errorf("usage: %s", cmd.Name)
+	}
+
+	ctx := context.Background()
+
+	followedFeeds, err := s.db.GetFeedFollowsForUser(ctx, user.ID)
+	if err != nil {
+		return fmt.Errorf("error finding followed feeds")
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "User (%v) following %v feeds:\n", user.Name, len(followedFeeds))
+
+	for _, feed := range followedFeeds {
+		fmt.Fprintf(w, "\t%c %s\n", '➤', feed.Feed)
+	}
+	w.Flush()
+	return nil
 }

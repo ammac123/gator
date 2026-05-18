@@ -18,11 +18,11 @@ func handlerLogin(s *state, cmd command) error {
 	ctx := context.Background()
 
 	user, err := s.db.GetUser(ctx, name)
-	if (err != nil) || (user.Name != name) {
+	if err != nil {
 		return fmt.Errorf("error retrieving user")
 	}
 
-	err = s.cfg.SetUser(name)
+	err = s.cfg.SetUser(user.Name)
 	if err != nil {
 		return fmt.Errorf("could not set current user: %w", err)
 	}
@@ -71,8 +71,14 @@ func handlerReset(s *state, cmd command) error {
 	if err != nil {
 		return fmt.Errorf("error resetting user table: %v", err)
 	}
-
 	fmt.Println("All users successfully reset!")
+
+	err = s.db.ResetAllFeeds(ctx)
+	if err != nil {
+		return fmt.Errorf("error resetting feed table: %v", err)
+	}
+	fmt.Println("All feeds successfully reset!")
+
 	return nil
 }
 
