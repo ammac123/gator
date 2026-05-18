@@ -60,3 +60,38 @@ func handlerRegister(s *state, cmd command) error {
 	log.Printf("%+v\n", user)
 	return nil
 }
+
+func handlerReset(s *state, cmd command) error {
+	if len(cmd.Args) != 0 {
+		return fmt.Errorf("usage: %v", cmd.Name)
+	}
+
+	ctx := context.Background()
+	err := s.db.ResetAllUsers(ctx)
+	if err != nil {
+		return fmt.Errorf("error resetting user table: %v", err)
+	}
+
+	fmt.Println("All users successfully reset!")
+	return nil
+}
+
+func handlerUsers(s *state, cmd command) error {
+	if len(cmd.Args) != 0 {
+		return fmt.Errorf("usage: %v", cmd.Name)
+	}
+
+	ctx := context.Background()
+	users, err := s.db.GetAllUsers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, user := range users {
+		if user == s.cfg.CurrentUserName {
+			fmt.Printf("* %v (current)\n", user)
+		} else {
+			fmt.Printf("* %v\n", user)
+		}
+	}
+	return nil
+}

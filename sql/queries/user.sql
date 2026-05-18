@@ -12,3 +12,12 @@ RETURNING *;
 SELECT *
 FROM users
 WHERE users.name = $1;
+
+-- name: ResetAllUsers :exec
+DELETE FROM users
+WHERE 1=1;
+
+-- name: GetAllUsers :many
+SELECT
+    name
+FROM users;
