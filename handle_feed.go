@@ -2,43 +2,34 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"html"
 	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/ammac123/gator/internal/database"
-	"github.com/ammac123/gator/internal/rss"
 	"github.com/google/uuid"
 )
 
 func handlerAgg(s *state, cmd command) error {
-	if len(cmd.Args) != 0 {
-		return fmt.Errorf("usage: %v [url]\n", cmd.Name)
+	if len(cmd.Args) != 1 {
+		return fmt.Errorf("usage: %v [refresh frequency (e.g. 1s, 1m, 1h25m)]\n", cmd.Name)
 	}
 
-	// feedURL := html.EscapeString(cmd.Args[0])
-	feedURL := html.EscapeString("https://www.wagslane.dev/index.xml")
-
-	ctx := context.Background()
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	feed, err := rss.FetchFeed(ctx, feedURL)
-	if err != nil {
-		return fmt.Errorf("%v\n", err)
-	}
-
-	data, err := json.MarshalIndent(feed, "", "  ")
+	timeBetweenReqs, err := time.ParseDuration(cmd.Args[0])
 	if err != nil {
 		return err
 	}
-	fmt.Println(string(data))
 
-	return nil
+	ticker := time.NewTicker(timeBetweenReqs)
+	for ; ; <-ticker.C {
+		err := scrapeFeeds(s)
+		if err != nil {
+			return err
+		}
+	}
 
 }
 
@@ -167,4 +158,60 @@ func handlerFollowing(s *state, cmd command, user database.User) error {
 	}
 	w.Flush()
 	return nil
+}
+
+func handlerUnfollow(s *state, cmd command, user database.User) error {
+	if len(cmd.Args) != 1 {
+		return fmt.Errorf("usage: %s <url>", cmd.Name)
+	}
+	feedUrl := cmd.Args[0]
+	ctx := context.Background()
+
+	feed, err := s.db.GetFeedByURL(ctx, feedUrl)
+	if err != nil {
+		return fmt.Errorf("could not find feed.\n")
+	}
+
+	err = s.db.DeleteFeedFollowRecord(ctx, database.DeleteFeedFollowRecordParams{
+		UserID: user.ID,
+		FeedID: feed.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("could not unfollow feed.\n")
+	}
+
+	fmt.Printf("Successfully deleted feed '%s'\n", feed.Name)
+	return nil
+
+}
+
+func handlerBrowse(s *state, cmd command, user database.User) error {
+	if len(cmd.Args) > 1 {
+		return fmt.Errorf("usage: %s [limit]", cmd.Name)
+	}
+
+	var limit int
+	if len(cmd.Args) == 1 {
+		limit, err := strconv.Atoi(cmd.Args[0])
+		if err != nil {
+			return fmt.Errorf("could not parse %v as int", limit)
+		}
+	} else {
+		limit = 2
+	}
+
+	ctx := context.Background()
+	feed, err := s.db.GetPostsForUser(ctx, database.GetPostsForUserParams{
+		ID:    user.ID,
+		Limit: int32(limit),
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, item := range feed {
+		printPost(item)
+	}
+	return nil
+
 }
